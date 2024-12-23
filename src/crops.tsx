@@ -30,19 +30,15 @@ interface CropDefinition {
 }
 
 interface CropMetrics {
-  harvests: number;
-  cost: number;
-  profit: number;
-  plots: number;
-}
-
-interface CropAllocation extends CropDefinition {
-  harvestsPerSeason: number;
-  cost: number;
-  profit: number;
+  availableHarvests: number;
+  startupCost: number;
+  totalCost: number;
+  totalProfit: number;
   netProfit: number;
   allocatedPlots: number;
 }
+
+interface CropAllocation extends CropDefinition, CropMetrics {}
 
 const CropRotationOptimizer = () => {
   const [budget, setBudget] = useState(1000);  // Starting budget
@@ -144,20 +140,32 @@ const CropRotationOptimizer = () => {
       const daysAfterFirstHarvest = daysInSeason - crop.daysToMature;
       const additionalHarvests = Math.floor(daysAfterFirstHarvest / crop.daysToReflower!);
       const totalHarvests = 1 + additionalHarvests;
+      const startupCost = crop.seedCost * numPlots;
+      const totalCost = crop.seedCost * numPlots;
+      const totalProfit = totalHarvests * crop.profitPerHarvest * numPlots
+      const netProfit = totalProfit - totalCost;
       
       return {
-        harvests: totalHarvests,
-        cost: crop.seedCost * numPlots,
-        profit: totalHarvests * crop.profitPerHarvest * numPlots,
-        plots: numPlots
+        availableHarvests: totalHarvests,
+        startupCost,
+        totalCost,
+        totalProfit,
+        netProfit,
+        allocatedPlots: numPlots
       };
     } else {
       const cyclesPerSeason = Math.floor(daysInSeason / crop.daysToMature);
+      const startupCost = crop.seedCost * numPlots;
+      const totalCost = cyclesPerSeason * crop.seedCost * numPlots;
+      const totalProfit = cyclesPerSeason * crop.profitPerHarvest * numPlots;
+      const netProfit = totalProfit - totalCost;
       return {
-        harvests: cyclesPerSeason,
-        cost: cyclesPerSeason * crop.seedCost * numPlots,
-        profit: cyclesPerSeason * crop.profitPerHarvest * numPlots,
-        plots: numPlots
+        availableHarvests: cyclesPerSeason,
+        startupCost,
+        totalCost,
+        totalProfit,
+        netProfit,
+        allocatedPlots: numPlots
       };
     }
   };
@@ -176,10 +184,9 @@ const CropRotationOptimizer = () => {
       const singlePlotMetrics = calculateCropProfitability(crop, 1);
       return {
         crop,
-        profitPerPlot: singlePlotMetrics.profit - singlePlotMetrics.cost,
         ...singlePlotMetrics
       };
-    }).sort((a, b) => (b.profitPerPlot) - (a.profitPerPlot));
+    }).sort((a, b) => (b.netProfit) - (a.netProfit));
 
     // Initial allocation function
     const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: CropAllocation[] = []) => {
@@ -187,7 +194,7 @@ const CropRotationOptimizer = () => {
         if (remainingBudget <= 0 || remainingPlots <= 0) break;
         
         // Calculate maximum plots we can afford and allocate
-        const maxPlotsAffordable = Math.floor(remainingBudget / cropMetric.cost);
+        const maxPlotsAffordable = Math.floor(remainingBudget / cropMetric.startupCost);
         const plotsToAllocate = Math.min(maxPlotsAffordable, remainingPlots);
         
         if (plotsToAllocate > 0) {
@@ -195,14 +202,10 @@ const CropRotationOptimizer = () => {
           console.log("ALLOCATING", cropMetric.crop.name, plotsToAllocate, metrics);
           allocations.push({
             ...cropMetric.crop,
-            allocatedPlots: plotsToAllocate,
-            cost: metrics.cost,
-            profit: metrics.profit,
-            netProfit: metrics.profit - metrics.cost,
-            harvestsPerSeason: metrics.harvests
+            ...cropMetric,
           });
           
-          remainingBudget -= metrics.cost;
+          remainingBudget -= metrics.startupCost;
           remainingPlots -= plotsToAllocate;
         }
       }
@@ -225,7 +228,7 @@ const CropRotationOptimizer = () => {
         const remainingAllocations = bestAllocation.filter((_, index: number) => index !== i);
         
         // Calculate new budget and plots available after removal
-        const newBudget = budget - remainingAllocations.reduce((sum, a) => sum + a.cost, 0);
+        const newBudget = budget - remainingAllocations.reduce((sum, a) => sum + a.totalCost, 0);
         const newPlots = availablePlots - remainingAllocations.reduce((sum, a) => sum + a.allocatedPlots, 0);
         
         // Try reallocating with remaining budget and plots
@@ -498,7 +501,8 @@ const CropRotationOptimizer = () => {
                     <tr>
                       <th className="p-2 border text-left">Crop</th>
                       <th className="p-2 border text-right">Plots</th>
-                      <th className="p-2 border text-right">Initial Cost</th>
+                      <th className="p-2 border text-right">Startup Cost</th>
+                      <th className="p-2 border text-right">Total Cost</th>
                       <th className="p-2 border text-right">Total Profit</th>
                       <th className="p-2 border text-right">Net Profit</th>
                       <th className="p-2 border text-right">Harvests</th>
@@ -515,12 +519,13 @@ const CropRotationOptimizer = () => {
                           {result.name}
                         </td>
                         <td className="p-2 border text-right">{result.allocatedPlots}</td>
-                        <td className="p-2 border text-right">${result.cost}</td>
-                        <td className="p-2 border text-right">${result.profit}</td>
+                        <td className="p-2 border text-right">${result.startupCost}</td>
+                        <td className="p-2 border text-right">${result.totalCost}</td>
+                        <td className="p-2 border text-right">${result.totalProfit}</td>
                         <td className="p-2 border text-right">${result.netProfit}</td>
-                        <td className="p-2 border text-right">{result.harvestsPerSeason}</td>
+                        <td className="p-2 border text-right">{result.availableHarvests}</td>
                         <td className="p-2 border text-right">
-                          {((result.netProfit! / result.cost!) * 100).toFixed(1)}%
+                          {((result.netProfit! / result.totalCost!) * 100).toFixed(1)}%
                         </td>
                       </tr>
                     ))}
@@ -613,7 +618,8 @@ const CropRotationOptimizer = () => {
                     <th className="p-2 border text-right">Profit/Harvest</th>
                     <th className="p-2 border text-right">Days to Mature</th>
                     <th className="p-2 border text-right">Days to Reflower</th>
-                    <th className="p-2 border text-right">Initial Cost/Plot</th>
+                    <th className="p-2 border text-right">Startup Cost/Plot</th>
+                    <th className="p-2 border text-right">Total Cost/Plot</th>
                     <th className="p-2 border text-right">Total Profit/Plot</th>
                     <th className="p-2 border text-right">Net Profit/Plot</th>
                     <th className="p-2 border text-right">Harvests/Plot</th>
@@ -629,11 +635,11 @@ const CropRotationOptimizer = () => {
                       return {
                         crop,
                         metrics,
-                        roi: (metrics.profit - metrics.cost) / metrics.cost
+                        roi: (metrics.totalProfit - metrics.totalCost) / metrics.totalCost
                       };
                     })
                     // .sort((a, b) => b.roi - a.roi)
-                    .sort((a, b) => (b.metrics.profit - b.metrics.cost) - (a.metrics.profit - a.metrics.cost))
+                    .sort((a, b) => (b.metrics.totalProfit - b.metrics.totalCost) - (a.metrics.totalProfit - a.metrics.totalCost))
                     .map(({ crop, metrics, roi }) => (
                       <tr key={crop.id} className={`${crop.seasons.includes(currentSeason) ? 'bg-green-50' : ''} ${crop.isDisabled ? 'opacity-50' : ''}`}>
                         <td className="p-2 border">
@@ -649,10 +655,11 @@ const CropRotationOptimizer = () => {
                         <td className="p-2 border text-right">
                           {crop.type === 'renewable' ? crop.daysToReflower : '-'}
                         </td>
-                        <td className="p-2 border text-right">${metrics.cost}</td>
-                        <td className="p-2 border text-right">${metrics.profit}</td>
-                        <td className="p-2 border text-right">${metrics.profit - metrics.cost}</td>
-                        <td className="p-2 border text-right">{metrics.harvests}</td>
+                        <td className="p-2 border text-right">${metrics.startupCost}</td>
+                        <td className="p-2 border text-right">${metrics.totalCost}</td>
+                        <td className="p-2 border text-right">${metrics.totalProfit}</td>
+                        <td className="p-2 border text-right">${metrics.totalProfit - metrics.totalCost}</td>
+                        <td className="p-2 border text-right">{metrics.availableHarvests}</td>
                         <td className="p-2 border text-right">{(roi * 100).toFixed(1)}%</td>
                         <td className="p-2 border text-center">
                           <div className="flex gap-1 justify-center">
