@@ -240,7 +240,12 @@ const CropRotationOptimizer = () => {
 
     // Iterative improvement
     const excludedCropIDs = new Set<string>();
-    while (improved) {
+    let retries = 0;
+    const allowedRetries = 5;
+    while (improved || (retries < allowedRetries)) {
+      if (improved) retries = 0;
+      else retries++;
+      if (retries >= allowedRetries) break;
       improved = false;
 
       // Try removing each allocation and reallocating
