@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2 } from 'lucide-react';
 
+import {v7 as uuid} from "uuid"
+
 interface CropDefinition {
-  id: number;
+  id: string;
   name: string;
   type: 'single' | 'renewable';
   seedCost: number;
@@ -39,7 +41,7 @@ const CropRotationOptimizer = () => {
   const savedCrops = localStorage.getItem('crops');
   let initialCropState: CropDefinition[] = [
     { 
-      id: 1,
+      id: uuid(),
       name: 'Tomato',
       type: 'renewable',
       seedCost: 150,
@@ -51,7 +53,7 @@ const CropRotationOptimizer = () => {
       isDisabled: false
     },
     {
-      id: 2,
+      id: uuid(),
       name: 'Apple Tree',
       type: 'renewable',
       seedCost: 500,
@@ -63,7 +65,7 @@ const CropRotationOptimizer = () => {
       isDisabled: false
     },
     {
-      id: 3,
+      id: uuid(),
       name: 'Lettuce',
       type: 'single',
       seedCost: 20,
@@ -99,7 +101,7 @@ const CropRotationOptimizer = () => {
 
   const addCrop = () => {
     if (newCrop.name && newCrop.seedCost && newCrop.daysToMature && newCrop.profitPerHarvest) {
-      setCrops([...crops, { ...newCrop, id: crops.length + 1 }]);
+      setCrops([...crops, { ...newCrop, id: uuid() }]);
       setNewCrop({
         name: '',
         type: 'single',
