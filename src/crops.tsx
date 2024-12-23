@@ -573,6 +573,25 @@ const CropRotationOptimizer = () => {
                         </td>
                       </tr>
                     ))}
+                    <tr className="font-bold bg-gray-50">
+                      <td className="p-2 border">Total</td>
+                      <td className="p-2 border text-right">
+                        {calculateOptimalRotation().reduce((sum, result) => sum + result.allocatedPlots, 0)}
+                      </td>
+                      <td className="p-2 border text-right">
+                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.startupCost, 0)}
+                      </td>
+                      <td className="p-2 border text-right">
+                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.totalCost, 0)}
+                      </td>
+                      <td className="p-2 border text-right">
+                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.totalProfit, 0)}
+                      </td>
+                      <td className="p-2 border text-right">
+                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.netProfit, 0)}
+                      </td>
+                      <td className="p-2 border" colSpan={2}></td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
