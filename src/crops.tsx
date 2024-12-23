@@ -19,7 +19,8 @@ const CropRotationOptimizer = () => {
       daysToMature: 14,
       daysToReflower: 7,
       seasons: ['spring', 'summer'],
-      isTree: false
+      isTree: false,
+      isDisabled: false
     },
     {
       id: 2,
@@ -59,7 +60,8 @@ const CropRotationOptimizer = () => {
     daysToMature: 0,
     daysToReflower: 0,
     seasons: [] as string[],
-    isTree: false
+    isTree: false,
+    isDisabled: false
   });
 
   const [currentSeason, setCurrentSeason] = useState('spring');
@@ -76,7 +78,8 @@ const CropRotationOptimizer = () => {
         daysToMature: 0,
         daysToReflower: 0,
         seasons: [...newCrop.seasons],
-        isTree: false
+        isTree: false,
+        isDisabled: false,
       });
     }
   };
@@ -124,7 +127,7 @@ const CropRotationOptimizer = () => {
 
   const calculateOptimalRotation = () => {
     const availableCrops = crops.filter(crop => 
-      crop.seasons.includes(currentSeason)
+      crop.seasons.includes(currentSeason) && !crop.isDisabled
     );
 
     // Calculate profit per plot for each crop
@@ -520,7 +523,7 @@ const CropRotationOptimizer = () => {
                     })
                     .sort((a, b) => b.roi - a.roi)
                     .map(({ crop, metrics, roi }) => (
-                      <tr key={crop.id} className={crop.seasons.includes(currentSeason) ? 'bg-green-50' : ''}>
+                      <tr key={crop.id} className={`${crop.seasons.includes(currentSeason) ? 'bg-green-50' : ''} ${crop.isDisabled ? 'opacity-50' : ''}`}>
                         <td className="p-2 border">
                           <span className="font-mono mr-2">
                             {crop.isTree ? '🌳' : '🌱'}
@@ -556,16 +559,30 @@ const CropRotationOptimizer = () => {
                           </div>
                         </td>
                         <td className="p-2 border text-center">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              const newCrops = crops.filter(c => c.id !== crop.id);
-                              setCrops(newCrops);
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-2 justify-center">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                const newCrops = crops.filter(c => c.id !== crop.id);
+                                setCrops(newCrops);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant={crop.isDisabled ? "outline" : "default"}
+                              size="sm"
+                              onClick={() => {
+                                const newCrops = crops.map(c => 
+                                  c.id === crop.id ? { ...c, isDisabled: !c.isDisabled } as typeof c : c
+                                );
+                                setCrops(newCrops);
+                              }}
+                            >
+                              {crop.isDisabled ? "Enable" : "Disable"}
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
