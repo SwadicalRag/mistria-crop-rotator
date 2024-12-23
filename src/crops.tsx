@@ -3,13 +3,41 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2 } from 'lucide-react';
 
+interface CropDefinition {
+  id: number;
+  name: string;
+  type: 'single' | 'renewable';
+  seedCost: number;
+  profitPerHarvest: number;
+  daysToMature: number;
+  daysToReflower?: number;
+  seasons: string[];
+  isTree: boolean;
+  isDisabled: boolean;
+}
+
+interface CropMetrics {
+  harvests: number;
+  cost: number;
+  profit: number;
+  plots: number;
+}
+
+interface CropAllocation extends CropDefinition {
+  harvestsPerSeason: number;
+  cost: number;
+  profit: number;
+  netProfit: number;
+  allocatedPlots: number;
+}
+
 const CropRotationOptimizer = () => {
   const [budget, setBudget] = useState(1000);  // Starting budget
   const [availablePlots, setAvailablePlots] = useState(4);  // Number of plots
   const [daysInSeason, setDaysInSeason] = useState(28);  // Days left in season
   
   const savedCrops = localStorage.getItem('crops');
-  let initialCropState = [
+  let initialCropState: CropDefinition[] = [
     { 
       id: 1,
       name: 'Tomato',
@@ -31,7 +59,8 @@ const CropRotationOptimizer = () => {
       daysToMature: 60,
       daysToReflower: 30,
       seasons: ['summer', 'fall'],
-      isTree: true
+      isTree: true,
+      isDisabled: false
     },
     {
       id: 3,
@@ -41,7 +70,8 @@ const CropRotationOptimizer = () => {
       profitPerHarvest: 40,
       daysToMature: 10,
       seasons: ['spring', 'fall'],
-      isTree: false
+      isTree: false,
+      isDisabled: false
     }
   ];
 
@@ -62,7 +92,7 @@ const CropRotationOptimizer = () => {
     seasons: [] as string[],
     isTree: false,
     isDisabled: false
-  });
+  } satisfies Omit<CropDefinition, "id"> as Omit<CropDefinition, "id">);
 
   const [currentSeason, setCurrentSeason] = useState('spring');
   const seasons = ['spring', 'summer', 'fall', 'winter'];
@@ -98,7 +128,7 @@ const CropRotationOptimizer = () => {
     localStorage.setItem('crops', JSON.stringify(crops));
   }, [crops]);
 
-  const calculateCropProfitability = (crop: { id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; daysToReflower: number; seasons: string[]; isTree: boolean; } | { id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; seasons: string[]; isTree: boolean; daysToReflower?: undefined; }, numPlots: number) => {
+  const calculateCropProfitability = (crop: CropDefinition, numPlots: number): CropMetrics => {
     if (crop.type === 'renewable') {
       const daysAfterFirstHarvest = daysInSeason - crop.daysToMature;
       const additionalHarvests = Math.floor(daysAfterFirstHarvest / crop.daysToReflower!);
@@ -141,7 +171,7 @@ const CropRotationOptimizer = () => {
     }).sort((a, b) => (b.profitPerPlot) - (a.profitPerPlot));
 
     // Initial allocation function
-    const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: ({ allocatedPlots: number; cost: number; profit: number; netProfit: number; harvestsPerSeason: number; id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; daysToReflower: number; seasons: string[]; isTree: boolean; } | { allocatedPlots: number; cost: number; profit: number; netProfit: number; harvestsPerSeason: number; id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; seasons: string[]; isTree: boolean; daysToReflower?: undefined; })[] = []) => {
+    const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: CropAllocation[] = []) => {
       for (const cropMetric of cropProfits) {
         if (remainingBudget <= 0 || remainingPlots <= 0) break;
         
@@ -151,6 +181,7 @@ const CropRotationOptimizer = () => {
         
         if (plotsToAllocate > 0) {
           const metrics = calculateCropProfitability(cropMetric.crop, plotsToAllocate);
+          console.log("ALLOCATING", cropMetric.crop.name, plotsToAllocate, metrics);
           allocations.push({
             ...cropMetric.crop,
             allocatedPlots: plotsToAllocate,
@@ -299,7 +330,7 @@ const CropRotationOptimizer = () => {
                   <select
                     className="w-full p-2 border rounded mt-1"
                     value={newCrop.type}
-                    onChange={(e) => setNewCrop({ ...newCrop, type: e.target.value })}
+                    onChange={(e) => setNewCrop({ ...newCrop, type: e.target.value as 'single' | 'renewable' })}
                   >
                     <option value="single">Single Use</option>
                     <option value="renewable">Renewable</option>
@@ -414,7 +445,7 @@ const CropRotationOptimizer = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {calculateOptimalRotation().map((result: { id: React.Key | null | undefined; isTree: boolean; name: string | number | boolean | React.ReactElement | Iterable<React.ReactNode> | React.ReactPortal | null | undefined; allocatedPlots: string | number | boolean | React.ReactElement | Iterable<React.ReactNode> | React.ReactPortal | null | undefined; cost: number | undefined; profit: string | number | boolean | React.ReactElement | Iterable<React.ReactNode> | React.ReactPortal | null | undefined; netProfit: number | undefined; harvestsPerSeason: string | number | boolean | React.ReactElement | Iterable<React.ReactNode> | React.ReactPortal | null | undefined; }) => (
+                    {calculateOptimalRotation().map((result) => (
                       <tr key={result.id}>
                         <td className="p-2 border">
                           <span className="font-mono mr-2">
@@ -521,7 +552,8 @@ const CropRotationOptimizer = () => {
                         roi: (metrics.profit - metrics.cost) / metrics.cost
                       };
                     })
-                    .sort((a, b) => b.roi - a.roi)
+                    // .sort((a, b) => b.roi - a.roi)
+                    .sort((a, b) => (b.metrics.profit - b.metrics.cost) - (a.metrics.profit - a.metrics.cost))
                     .map(({ crop, metrics, roi }) => (
                       <tr key={crop.id} className={`${crop.seasons.includes(currentSeason) ? 'bg-green-50' : ''} ${crop.isDisabled ? 'opacity-50' : ''}`}>
                         <td className="p-2 border">
