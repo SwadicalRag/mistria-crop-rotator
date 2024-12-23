@@ -1,6 +1,6 @@
 # 🌾 Crop Rotation Optimizer for Fields of Mistria
 
-A React-based web application for optimizing crop rotations in [Fields of Mistria](https://store.steampowered.com/app/2142790/Fields_of_Mistria/). This tool helps maximize profits by suggesting optimal crop combinations based on available resources, seasonal constraints, and crop characteristics.
+A React-based web application for optimizing crop rotations in [Fields of Mistria](https://store.steampowered.com/app/2142790/Fields_of_Mistria/). This tool helps maximize profits by suggesting optimal crop combinations based on available resources, seasonal constraints, and crop characteristics using the Z3 theorem prover for exact optimization.
 
 ## ✨ Features
 
@@ -18,11 +18,13 @@ A React-based web application for optimizing crop rotations in [Fields of Mistri
 - Enable/Disable crops without deletion
 
 ### 📊 Optimization Features
-- Automatic calculation of optimal crop rotation
+- Exact optimization using Z3 theorem prover
+- Globally optimal solutions guaranteed
 - Per-plot profitability analysis
 - Season-specific recommendations
 - ROI calculations
 - Multiple harvest calculations for renewable crops
+- Mathematically proven optimal allocations
 
 ### 🎨 User Interface
 - Responsive grid layout
@@ -30,6 +32,7 @@ A React-based web application for optimizing crop rotations in [Fields of Mistri
 - Clear data visualization
 - Interactive season selection
 - Detailed crop statistics
+- Real-time optimization status feedback
 
 ## 📖 Usage
 
@@ -62,18 +65,22 @@ Name    SeedCost    DaysToMature    DaysToReflower    ProfitPerHarvest
 ### 📋 Viewing Recommendations
 1. Set your resources (budget, plots, days)
 2. Select a season
-3. View the recommended crop rotation in the results table
-4. Check the detailed breakdown of costs, profits, and ROI
+3. Click "Calculate Optimal Rotation"
+4. View the mathematically optimal crop rotation in the results table
+5. Check the detailed breakdown of costs, profits, and ROI
 
 ## 🔧 Technical Details
 
 ### 🧮 Optimization Algorithm
-The tool uses an iterative improvement algorithm that:
-1. Makes an initial allocation based on per-plot profitability
-2. Iteratively tries removing and reallocating crops
-3. Considers both startup costs and recurring profits
-4. Respects budget and plot constraints
-5. But does **not** account for multi-season/year rollover (i.e. trees)
+The tool uses the Z3 theorem prover for exact optimization:
+1. Creates Z3 integer variables for plot allocations
+2. Defines constraints:
+   - Non-negative plot allocations
+   - Total plots cannot exceed available plots
+   - Total startup cost cannot exceed budget
+3. Uses binary search to maximize total profit
+4. Guarantees globally optimal solutions
+5. Handles complex constraints efficiently
 
 ### 💾 State Management
 - Uses React's useState for state management
@@ -83,6 +90,7 @@ The tool uses an iterative improvement algorithm that:
   - Crop inventory
   - Current season
   - New crop form
+  - Optimization results
 
 ### 🎯 UI Components
 Built using:
@@ -92,16 +100,27 @@ Built using:
 
 ## 📦 Dependencies
 - React
+- z3-solver
 - shadcn/ui
 - Lucide React
 - UUID v7
 - Tailwind CSS
 
 ## 🚀 Installation
-1. Ensure the required dependencies are installed
-2. Import the CropRotationOptimizer component
-3. Add necessary UI component imports from shadcn/ui
-4. Include the component in your React application
+1. Install the required dependencies:
+```bash
+npm install z3-solver shadcn-ui lucide-react uuid
+```
+2. Ensure your environment supports Web Assembly (required for z3-solver)
+3. Add appropriate headers for SharedArrayBuffer support if deploying to web
+4. Import the CropRotationOptimizer component
+5. Add necessary UI component imports from shadcn/ui
+6. Include the component in your React application
+
+## ⚠️ Requirements
+- Environment must support Web Assembly
+- Browser must support SharedArrayBuffer
+- Appropriate CORS and security headers must be set for web deployment
 
 ## 👥 Contributing
 Feel free to submit issues and enhancement requests!
