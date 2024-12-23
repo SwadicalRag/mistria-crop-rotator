@@ -89,7 +89,6 @@ const CropRotationOptimizer = () => {
   ];
 
   if (savedCrops) {
-    console.trace('Loading crops from localStorage:', JSON.parse(savedCrops));
     initialCropState = JSON.parse(savedCrops);
   }
 
@@ -137,7 +136,6 @@ const CropRotationOptimizer = () => {
   
   // Save crops to localStorage whenever they change
   React.useEffect(() => {
-    console.trace('Saving crops to localStorage:', crops);
     localStorage.setItem('crops', JSON.stringify(crops));
   }, [crops]);
 
