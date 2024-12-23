@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2 } from 'lucide-react';
+import { Arith, init } from 'z3-solver';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,6 +45,8 @@ const CropRotationOptimizer = () => {
   const [budget, setBudget] = useState(1000);  // Starting budget
   const [availablePlots, setAvailablePlots] = useState(4);  // Number of plots
   const [daysInSeason, setDaysInSeason] = useState(28);  // Days left in season
+  const [optimizationResult, setOptimizationResult] = useState<CropAllocation[] | null>(null);
+  const [isCalculating, setIsCalculating] = useState<boolean>(false);
   
   const savedCrops = localStorage.getItem('crops');
   let initialCropState: CropDefinition[] = [
@@ -170,134 +173,110 @@ const CropRotationOptimizer = () => {
     }
   };
 
-  const calculateTotalProfit = (allocations: { netProfit: number; }[]) => {
-    return allocations.reduce((total, allocation) => total + allocation.netProfit, 0);
-  };
+  const calculateOptimalRotation = async () => {
+    setIsCalculating(true);
+    try {
+      const { Context } = await init();
+      const { Solver, Int, Sum } = Context('main');
 
-  const calculateOptimalRotation = () => {
-    const availableCrops = crops.filter(crop => 
-      crop.seasons.includes(currentSeason) && !crop.isDisabled
-    );
+      const solver = new Solver();
+      const availableCrops = crops.filter(crop => 
+        crop.seasons.includes(currentSeason) && !crop.isDisabled
+      );
 
-    // Calculate profit per plot for each crop
-    const cropProfits = availableCrops.map(crop => {
-      const singlePlotMetrics = calculateCropProfitability(crop, 1);
-      return {
-        crop,
-        ...singlePlotMetrics
-      };
-    }).sort((a, b) => (b.netProfit) - (a.netProfit));
-
-    // Initial allocation function
-    const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: CropAllocation[] = [], excludedCropIDs?: Set<string>) => {
-      for (const cropMetric of cropProfits) {
-        if (remainingBudget <= 0 || remainingPlots <= 0) break;
-        if (excludedCropIDs && excludedCropIDs.has(cropMetric.crop.id)) continue;
+      // Create variables for each crop's plot allocation
+      const plotVariables: Record<string, Arith> = {};
+      for (const crop of availableCrops) {
+        plotVariables[crop.id] = Int.const(`plots_${crop.id}`);
         
-        // Calculate maximum plots we can afford and allocate
-        const maxPlotsAffordable = Math.floor(remainingBudget / cropMetric.startupCost);
-        const plotsToAllocate = Math.min(maxPlotsAffordable, remainingPlots);
+        // Constraint: Plot allocations must be non-negative
+        solver.add(plotVariables[crop.id].ge(0));
+      }
+
+      const SumEx = Sum as (...args: Arith[]) => Arith;
+
+      if(availableCrops.length === 0) {
+        setIsCalculating(false);
+        setOptimizationResult(null);
+        return;
+      }
+
+      // Constraint: Total plots must not exceed available plots
+      solver.add(
+        SumEx(...Object.values(plotVariables)).le(availablePlots)
+      );
+
+      // Calculate harvests and profits for each crop
+      const cropMetrics = availableCrops.map(crop => {
+        const metrics = calculateCropProfitability(crop, 1);
+        return {
+          ...crop,
+          ...metrics,
+        };
+      });
+
+      // Constraint: Total startup cost must not exceed budget
+      const startupCosts = cropMetrics.map(crop => 
+        plotVariables[crop.id].mul(crop.startupCost)
+      );
+      solver.add(SumEx(...startupCosts).le(budget));
+
+      // Objective: Maximize total profit
+      const profits = cropMetrics.map(crop =>
+        plotVariables[crop.id].mul(crop.netProfit)
+      );
+      
+      // Use binary search to find maximum profit
+      let lowerBound = 0;
+      let upperBound = budget * 100; // Reasonable upper limit
+      let bestResult = null;
+
+      while (lowerBound <= upperBound) {
+        const targetProfit = Math.floor((lowerBound + upperBound) / 2);
+        solver.push();
+        solver.add(SumEx(...profits).ge(targetProfit));
+
+        const checkResult = await solver.check();
         
-        if (plotsToAllocate > 0) {
-          // Check if crop has already been allocated
-          // If so, plus one to the allocated plots and recalculate metrics
-          if(allocations.some(a => a.id === cropMetric.crop.id)) {
-            const existingAllocation = allocations.find(a => a.id === cropMetric.crop.id)!;
-
-            // Deallocate from budget and plots first
-            remainingBudget += existingAllocation!.startupCost;
-            remainingPlots += existingAllocation!.allocatedPlots;
-
-            // Recalculate metrics
-            existingAllocation!.allocatedPlots += plotsToAllocate;
-            const newMetrics = calculateCropProfitability(cropMetric.crop, existingAllocation!.allocatedPlots);
-            Object.assign(existingAllocation, newMetrics);
-
-            // Allocate back to budget and plots
-            remainingBudget -= newMetrics.startupCost;
-            remainingPlots -= plotsToAllocate;
+        if (checkResult === 'sat') {
+          const model = solver.model();
+          const allocations: Record<string,number> = {};
+          
+          for (const crop of availableCrops) {
+            allocations[crop.id] = Number(model.eval(plotVariables[crop.id]).toString());
           }
-          else {
-            const metrics = calculateCropProfitability(cropMetric.crop, plotsToAllocate);
-            allocations.push({
-              ...cropMetric.crop,
-              ...metrics,
-            });
-
-            remainingBudget -= metrics.startupCost;
-            remainingPlots -= plotsToAllocate;
-          }
+          
+          bestResult = {
+            profit: targetProfit,
+            allocations,
+          };
+          
+          lowerBound = targetProfit + 1;
+        } else {
+          upperBound = targetProfit - 1;
         }
+        
+        solver.pop();
       }
-      return allocations;
-    };
 
-    // Initial allocation
-    let bestAllocation = allocatePlots(budget, availablePlots);
-    bestAllocation.sort((a, b) => (b.startupCost) - (a.startupCost));
-    let bestProfit = calculateTotalProfit(bestAllocation);
-    let improved = true;
-
-    // Iterative improvement
-    const excludedCropIDs = new Set<string>();
-    let retries = 0;
-    const allowedRetries = 5;
-    while (improved || (retries < allowedRetries)) {
-      if (improved) retries = 0;
-      else retries++;
-      if (retries >= allowedRetries) break;
-      improved = false;
-
-      // Try removing each allocation and reallocating
-      for (let i = 0; i < bestAllocation.length; i++) {
-        const removedAllocation = bestAllocation[i];
-        excludedCropIDs.add(removedAllocation.id);
-
-        const removedCropProfitability = cropProfits.find(c => c.crop.id === removedAllocation.id)!;
-        const otherCropsWithIdenticalProfitability = cropProfits.filter((a, index) => {
-          return index !== i && a.netProfit === removedCropProfitability.netProfit
-        });
-        for(const cropProfitability of otherCropsWithIdenticalProfitability) {
-          excludedCropIDs.add(cropProfitability.crop.id);          
-        }
-
-        const remainingAllocations = bestAllocation.filter((_, index: number) => index !== i);
-
-        // remove one by one and retry
-        for (let j = 1; j <= removedAllocation.allocatedPlots; j++) {
-          // Try reallocating with remaining budget and plots
-          const adjustedAllocation = j !== removedAllocation.allocatedPlots
-            ? {
-              ...removedAllocation,
-              ...calculateCropProfitability(removedAllocation, removedAllocation.allocatedPlots - j)
-            }
-            : undefined;
-          const newAllocation = adjustedAllocation
-            ? [adjustedAllocation, ...remainingAllocations.map(a => ({ ...a }))]
-            : [...remainingAllocations.map(a => ({ ...a }))];
-
-          // Calculate new budget and plots available after adjustment
-          const remainingBudget = budget - newAllocation.reduce((sum, a) => sum + a.startupCost, 0);
-          const remainingPlots = availablePlots - newAllocation.reduce((sum, a) => sum + a.allocatedPlots, 0);
+      if (bestResult) {
+        const finalResults = availableCrops.map(crop => {
+          const plots = bestResult.allocations[crop.id];
+          const metrics = calculateCropProfitability(crop, plots);
           
-          allocatePlots(remainingBudget, remainingPlots, newAllocation, excludedCropIDs);
-          
-          const newProfit = calculateTotalProfit(newAllocation);
-          
-          if (newProfit > bestProfit) {
-            const sortedAllocation = [...newAllocation].sort((a, b) => (b.startupCost) - (a.startupCost));
-            bestAllocation = sortedAllocation;
-            bestProfit = newProfit;
-            improved = true;
-            break;
-          }
-        }
+          return {
+            ...crop,
+            ...metrics,
+          };
+        }).filter(result => result.allocatedPlots > 0);
+
+        setOptimizationResult(finalResults);
       }
+    } catch (error) {
+      console.error('Optimization error:', error);
+    } finally {
+      setIsCalculating(false);
     }
-
-    bestAllocation.sort((a, b) => (b.netProfit) - (a.netProfit));
-
-    return bestAllocation;
   };
 
   const parseTsvRow = (row: string): Omit<CropDefinition, "id"> | null => {
@@ -530,76 +509,86 @@ const CropRotationOptimizer = () => {
           <CardContent>
             <div className="space-y-4">
               {/* Season Selection */}
-              <div className="flex space-x-2">
-                {seasons.map(season => (
-                  <Button
-                    key={season}
-                    variant={currentSeason === season ? "default" : "outline"}
-                    onClick={() => setCurrentSeason(season)}
-                    className="capitalize"
-                  >
-                    {season}
-                  </Button>
-                ))}
+              <div className="flex justify-between items-center">
+                <div className="flex space-x-2">
+                  {seasons.map(season => (
+                    <Button
+                      key={season}
+                      variant={currentSeason === season ? "default" : "outline"}
+                      onClick={() => setCurrentSeason(season)}
+                      className="capitalize"
+                    >
+                      {season}
+                    </Button>
+                  ))}
+                </div>
+                <Button 
+                  onClick={calculateOptimalRotation}
+                  disabled={isCalculating}
+                >
+                  {isCalculating ? 'Calculating...' : 'Calculate Optimal Rotation'}
+                </Button>
               </div>
 
               {/* Results Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="p-2 border text-left">Crop</th>
-                      <th className="p-2 border text-right">Plots</th>
-                      <th className="p-2 border text-right">Startup Cost</th>
-                      <th className="p-2 border text-right">Total Cost</th>
-                      <th className="p-2 border text-right">Total Profit</th>
-                      <th className="p-2 border text-right">Net Profit</th>
-                      <th className="p-2 border text-right">Harvests</th>
-                      <th className="p-2 border text-right">ROI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {calculateOptimalRotation().map((result) => (
-                      <tr key={result.id}>
-                        <td className="p-2 border">
-                          <span className="font-mono mr-2">
-                            {result.isTree ? '🌳' : '🌱'}
-                          </span>
-                          {result.name}
-                        </td>
-                        <td className="p-2 border text-right">{result.allocatedPlots}</td>
-                        <td className="p-2 border text-right">${result.startupCost}</td>
-                        <td className="p-2 border text-right">${result.totalCost}</td>
-                        <td className="p-2 border text-right">${result.totalProfit}</td>
-                        <td className="p-2 border text-right">${result.netProfit}</td>
-                        <td className="p-2 border text-right">{result.availableHarvests}</td>
-                        <td className="p-2 border text-right">
-                          {((result.netProfit! / result.totalCost!) * 100).toFixed(1)}%
-                        </td>
+              {optimizationResult && (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="p-2 border text-left">Crop</th>
+                        <th className="p-2 border text-right">Plots</th>
+                        <th className="p-2 border text-right">Startup Cost</th>
+                        <th className="p-2 border text-right">Total Cost</th>
+                        <th className="p-2 border text-right">Total Profit</th>
+                        <th className="p-2 border text-right">Net Profit</th>
+                        <th className="p-2 border text-right">Harvests</th>
+                        <th className="p-2 border text-right">ROI</th>
                       </tr>
-                    ))}
-                    <tr className="font-bold bg-gray-50">
-                      <td className="p-2 border">Total</td>
-                      <td className="p-2 border text-right">
-                        {calculateOptimalRotation().reduce((sum, result) => sum + result.allocatedPlots, 0)}
-                      </td>
-                      <td className="p-2 border text-right">
-                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.startupCost, 0)}
-                      </td>
-                      <td className="p-2 border text-right">
-                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.totalCost, 0)}
-                      </td>
-                      <td className="p-2 border text-right">
-                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.totalProfit, 0)}
-                      </td>
-                      <td className="p-2 border text-right">
-                        ${calculateOptimalRotation().reduce((sum, result) => sum + result.netProfit, 0)}
-                      </td>
-                      <td className="p-2 border" colSpan={2}></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {optimizationResult.map((result) => (
+                        <tr key={result.id}>
+                          <td className="p-2 border">
+                            <span className="font-mono mr-2">
+                              {result.isTree ? '🌳' : '🌱'}
+                            </span>
+                            {result.name}
+                          </td>
+                          <td className="p-2 border text-right">{result.allocatedPlots}</td>
+                          <td className="p-2 border text-right">${result.startupCost}</td>
+                          <td className="p-2 border text-right">${result.totalCost}</td>
+                          <td className="p-2 border text-right">${result.totalProfit}</td>
+                          <td className="p-2 border text-right">${result.netProfit}</td>
+                          <td className="p-2 border text-right">{result.availableHarvests}</td>
+                          <td className="p-2 border text-right">
+                            {((result.netProfit / result.totalCost) * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="font-bold bg-gray-50">
+                        <td className="p-2 border">Total</td>
+                        <td className="p-2 border text-right">
+                          {optimizationResult.reduce((sum, result) => sum + result.allocatedPlots, 0)}
+                        </td>
+                        <td className="p-2 border text-right">
+                          ${optimizationResult.reduce((sum, result) => sum + result.startupCost, 0)}
+                        </td>
+                        <td className="p-2 border text-right">
+                          ${optimizationResult.reduce((sum, result) => sum + result.totalCost, 0)}
+                        </td>
+                        <td className="p-2 border text-right">
+                          ${optimizationResult.reduce((sum, result) => sum + result.totalProfit, 0)}
+                        </td>
+                        <td className="p-2 border text-right">
+                          ${optimizationResult.reduce((sum, result) => sum + result.netProfit, 0)}
+                        </td>
+                        <td className="p-2 border" colSpan={2}></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
