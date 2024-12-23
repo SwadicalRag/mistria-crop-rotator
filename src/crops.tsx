@@ -74,7 +74,7 @@ const CropRotationOptimizer = () => {
         profitPerHarvest: 0,
         daysToMature: 0,
         daysToReflower: 0,
-        seasons: [],
+        seasons: [...newCrop.seasons],
         isTree: false
       });
     }
@@ -203,6 +203,29 @@ const CropRotationOptimizer = () => {
     return bestAllocation;
   };
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData('text');
+    const values = pastedText.split('\t');
+    
+    if (values.length >= 4) {
+      const [name, seedCost, daysToMature, daysToReflower, profitPerHarvest] = values;
+      
+      // Check if this is a renewable crop based on whether daysToReflower is provided
+      const isRenewable = daysToReflower.trim() !== '';
+      
+      setNewCrop({
+        ...newCrop,
+        name: name.trim(),
+        type: isRenewable ? 'renewable' : 'single',
+        seedCost: parseInt(seedCost) || 0,
+        daysToMature: parseInt(daysToMature) || 0,
+        daysToReflower: isRenewable ? (parseInt(daysToReflower) || 0) : 0,
+        profitPerHarvest: parseInt(profitPerHarvest) || 0,
+      });
+    }
+  };
+
   return (
     <div className="p-4 mx-auto space-y-4">
       {/* Resource Configuration */}
@@ -253,6 +276,7 @@ const CropRotationOptimizer = () => {
                     className="w-full p-2 border rounded mt-1"
                     value={newCrop.name}
                     onChange={(e) => setNewCrop({ ...newCrop, name: e.target.value })}
+                    onPaste={handlePaste}
                   />
                 </label>
               </div>
