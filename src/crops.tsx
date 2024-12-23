@@ -189,24 +189,44 @@ const CropRotationOptimizer = () => {
     }).sort((a, b) => (b.netProfit) - (a.netProfit));
 
     // Initial allocation function
-    const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: CropAllocation[] = []) => {
+    const allocatePlots = (remainingBudget: number, remainingPlots: number, allocations: CropAllocation[] = [], excludedCropIDs?: string[]) => {
       for (const cropMetric of cropProfits) {
         if (remainingBudget <= 0 || remainingPlots <= 0) break;
+        if (excludedCropIDs && excludedCropIDs.includes(cropMetric.crop.id)) continue;
         
         // Calculate maximum plots we can afford and allocate
         const maxPlotsAffordable = Math.floor(remainingBudget / cropMetric.startupCost);
         const plotsToAllocate = Math.min(maxPlotsAffordable, remainingPlots);
         
         if (plotsToAllocate > 0) {
-          const metrics = calculateCropProfitability(cropMetric.crop, plotsToAllocate);
-          console.log("ALLOCATING", cropMetric.crop.name, plotsToAllocate, metrics);
-          allocations.push({
-            ...cropMetric.crop,
-            ...cropMetric,
-          });
-          
-          remainingBudget -= metrics.startupCost;
-          remainingPlots -= plotsToAllocate;
+          // Check if crop has already been allocated
+          // If so, plus one to the allocated plots and recalculate metrics
+          if(allocations.some(a => a.id === cropMetric.crop.id)) {
+            const existingAllocation = allocations.find(a => a.id === cropMetric.crop.id)!;
+
+            // Deallocate from budget and plots first
+            remainingBudget += existingAllocation!.startupCost;
+            remainingPlots += existingAllocation!.allocatedPlots;
+
+            // Recalculate metrics
+            existingAllocation!.allocatedPlots += plotsToAllocate;
+            const newMetrics = calculateCropProfitability(cropMetric.crop, existingAllocation!.allocatedPlots);
+            Object.assign(existingAllocation, newMetrics);
+
+            // Allocate back to budget and plots
+            remainingBudget -= newMetrics.startupCost;
+            remainingPlots -= plotsToAllocate;
+          }
+          else {
+            const metrics = calculateCropProfitability(cropMetric.crop, plotsToAllocate);
+            allocations.push({
+              ...cropMetric.crop,
+              ...metrics,
+            });
+
+            remainingBudget -= metrics.startupCost;
+            remainingPlots -= plotsToAllocate;
+          }
         }
       }
       return allocations;
@@ -216,27 +236,36 @@ const CropRotationOptimizer = () => {
     let bestAllocation = allocatePlots(budget, availablePlots);
     let bestProfit = calculateTotalProfit(bestAllocation);
     let improved = true;
+    const excludedCropIDs: string[] = [];
 
     // Iterative improvement
     while (improved) {
       improved = false;
+
+      const remainingCropIDs = availableCrops.map(c => c.id).filter(id => !excludedCropIDs.includes(id));
+      if (remainingCropIDs.length === 0) break;
+
+      bestAllocation.sort((a, b) => (b.netProfit) - (a.netProfit));
       
       // Try removing each allocation and reallocating
       for (let i = 0; i < bestAllocation.length; i++) {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const removedAllocation = bestAllocation[i];
+        excludedCropIDs.push(removedAllocation.id);
         const remainingAllocations = bestAllocation.filter((_, index: number) => index !== i);
+
+        if(removedAllocation.allocatedPlots > 1) {
+          remainingAllocations.splice(0,0, {...removedAllocation, allocatedPlots: removedAllocation.allocatedPlots - 1});
+        }
         
         // Calculate new budget and plots available after removal
         const newBudget = budget - remainingAllocations.reduce((sum, a) => sum + a.totalCost, 0);
         const newPlots = availablePlots - remainingAllocations.reduce((sum, a) => sum + a.allocatedPlots, 0);
         
         // Try reallocating with remaining budget and plots
-        const newAllocation = [
-          ...remainingAllocations,
-          ...allocatePlots(newBudget, newPlots)
-        ];
-        
+        const newAllocation = [...remainingAllocations];
+        allocatePlots(newBudget, newPlots, newAllocation, excludedCropIDs);
+
         const newProfit = calculateTotalProfit(newAllocation);
         
         if (newProfit > bestProfit) {
