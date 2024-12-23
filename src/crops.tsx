@@ -250,25 +250,73 @@ const CropRotationOptimizer = () => {
     return bestAllocation;
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData('text');
-    const values = pastedText.split('\t');
-    
+  const parseTsvRow = (row: string): Omit<CropDefinition, "id"> | null => {
+    const values = row.split('\t');
     if (values.length >= 4) {
       const [name, seedCost, daysToMature, daysToReflower, profitPerHarvest] = values;
       
+      // Skip empty rows
+      if (!name.trim()) return null;
+
       // Check if this is a renewable crop based on whether daysToReflower is provided
-      const isRenewable = daysToReflower.trim() !== '';
+      const isRenewable = daysToReflower && daysToReflower.trim() !== '';
       
-      setNewCrop({
-        ...newCrop,
+      return {
         name: name.trim(),
         type: isRenewable ? 'renewable' : 'single',
         seedCost: parseInt(seedCost) || 0,
         daysToMature: parseInt(daysToMature) || 0,
         daysToReflower: isRenewable ? (parseInt(daysToReflower) || 0) : 0,
         profitPerHarvest: parseInt(profitPerHarvest) || 0,
+        seasons: [...newCrop.seasons],
+        isTree: newCrop.isTree,
+        isDisabled: false,
+      };
+    }
+    return null;
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    // Validate first before preventDefault
+    const pastedText = e.clipboardData.getData('text');
+    const everyRowHas4Values = pastedText.trim().split('\n').every(row => row.split('\t').length >= 4);
+    if (!everyRowHas4Values) return;
+
+    e.preventDefault();
+    
+    // Split by newlines and parse each row
+    const rows = pastedText.split('\n').filter(row => row.split('\t').length >= 4);
+    const newCrops: CropDefinition[] = [];
+
+    const lastRow = rows.pop();
+    for (const row of rows) {
+      const cropData = parseTsvRow(row);
+      if (cropData) {
+        newCrops.push({ ...cropData, id: uuid() });
+      }
+    }
+
+    if (lastRow || newCrops.length > 0) {
+      setCrops(prev => [...prev, ...newCrops]);
+      if (lastRow) {
+        const cropData = parseTsvRow(lastRow);
+        if (cropData) {
+          setNewCrop({ ...cropData });
+          return;
+        }
+      }
+
+      // Reset the new crop form
+      setNewCrop({
+        name: '',
+        type: 'single',
+        seedCost: 0,
+        daysToMature: 0,
+        daysToReflower: 0,
+        profitPerHarvest: 0,
+        seasons: [...newCrop.seasons],
+        isTree: newCrop.isTree,
+        isDisabled: false,
       });
     }
   };
