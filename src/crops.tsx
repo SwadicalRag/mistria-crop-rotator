@@ -177,9 +177,9 @@ const CropRotationOptimizer = () => {
     setIsCalculating(true);
     try {
       const { Context } = await init();
-      const { Solver, Int, Sum } = Context('main');
+      const { Optimize, Int, Sum } = Context('main');
 
-      const solver = new Solver();
+      const optimizer = new Optimize();
       const availableCrops = crops.filter(crop => 
         crop.seasons.includes(currentSeason) && !crop.isDisabled
       );
@@ -190,19 +190,18 @@ const CropRotationOptimizer = () => {
         plotVariables[crop.id] = Int.const(`plots_${crop.id}`);
         
         // Constraint: Plot allocations must be non-negative
-        solver.add(plotVariables[crop.id].ge(0));
+        optimizer.add(plotVariables[crop.id].ge(0));
       }
 
       const SumEx = Sum as (...args: Arith[]) => Arith;
 
       if(availableCrops.length === 0) {
-        setIsCalculating(false);
         setOptimizationResult(null);
         return;
       }
 
       // Constraint: Total plots must not exceed available plots
-      solver.add(
+      optimizer.add(
         SumEx(...Object.values(plotVariables)).le(availablePlots)
       );
 
@@ -219,59 +218,39 @@ const CropRotationOptimizer = () => {
       const startupCosts = cropMetrics.map(crop => 
         plotVariables[crop.id].mul(crop.startupCost)
       );
-      solver.add(SumEx(...startupCosts).le(budget));
+      optimizer.add(SumEx(...startupCosts).le(budget));
 
       // Objective: Maximize total profit
       const profits = cropMetrics.map(crop =>
         plotVariables[crop.id].mul(crop.netProfit)
       );
+
+      optimizer.maximize(SumEx(...profits));
       
-      // Use binary search to find maximum profit
-      let lowerBound = 0;
-      let upperBound = budget * 100; // Reasonable upper limit
-      let bestResult = null;
-
-      while (lowerBound <= upperBound) {
-        const targetProfit = Math.floor((lowerBound + upperBound) / 2);
-        solver.push();
-        solver.add(SumEx(...profits).ge(targetProfit));
-
-        const checkResult = await solver.check();
-        
-        if (checkResult === 'sat') {
-          const model = solver.model();
-          const allocations: Record<string,number> = {};
-          
-          for (const crop of availableCrops) {
-            allocations[crop.id] = Number(model.eval(plotVariables[crop.id]).toString());
-          }
-          
-          bestResult = {
-            profit: targetProfit,
-            allocations,
-          };
-          
-          lowerBound = targetProfit + 1;
-        } else {
-          upperBound = targetProfit - 1;
-        }
-        
-        solver.pop();
+      const checkResult = await optimizer.check();
+      if (checkResult !== 'sat') {
+        setOptimizationResult(null);
+        return;
       }
 
-      if (bestResult) {
-        const finalResults = availableCrops.map(crop => {
-          const plots = bestResult.allocations[crop.id];
-          const metrics = calculateCropProfitability(crop, plots);
-          
-          return {
-            ...crop,
-            ...metrics,
-          };
-        }).filter(result => result.allocatedPlots > 0);
-
-        setOptimizationResult(finalResults);
+      const model = optimizer.model();
+      const allocations: Record<string,number> = {};
+      
+      for (const crop of availableCrops) {
+        allocations[crop.id] = Number(model.eval(plotVariables[crop.id]).toString());
       }
+
+      const finalResults = availableCrops.map(crop => {
+        const plots = allocations[crop.id];
+        const metrics = calculateCropProfitability(crop, plots);
+        
+        return {
+          ...crop,
+          ...metrics,
+        };
+      }).filter(result => result.allocatedPlots > 0);
+
+      setOptimizationResult(finalResults);
     } catch (error) {
       console.error('Optimization error:', error);
     } finally {
