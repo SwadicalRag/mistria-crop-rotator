@@ -6,6 +6,7 @@ import { Plus, Trash2 } from 'lucide-react';
 const CropRotationOptimizer = () => {
   const [budget, setBudget] = useState(1000);  // Starting budget
   const [availablePlots, setAvailablePlots] = useState(4);  // Number of plots
+  const [daysInSeason, setDaysInSeason] = useState(28);  // Days left in season
   
   const savedCrops = localStorage.getItem('crops');
   let initialCropState = [
@@ -87,7 +88,6 @@ const CropRotationOptimizer = () => {
     setNewCrop({ ...newCrop, seasons: newSeasons });
   };
 
-  const DAYS_IN_SEASON = 28;
   
   // Save crops to localStorage whenever they change
   React.useEffect(() => {
@@ -97,7 +97,7 @@ const CropRotationOptimizer = () => {
 
   const calculateCropProfitability = (crop: { id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; daysToReflower: number; seasons: string[]; isTree: boolean; } | { id: number; name: string; type: string; seedCost: number; profitPerHarvest: number; daysToMature: number; seasons: string[]; isTree: boolean; daysToReflower?: undefined; }, numPlots: number) => {
     if (crop.type === 'renewable') {
-      const daysAfterFirstHarvest = DAYS_IN_SEASON - crop.daysToMature;
+      const daysAfterFirstHarvest = daysInSeason - crop.daysToMature;
       const additionalHarvests = Math.floor(daysAfterFirstHarvest / crop.daysToReflower!);
       const totalHarvests = 1 + additionalHarvests;
       
@@ -108,7 +108,7 @@ const CropRotationOptimizer = () => {
         plots: numPlots
       };
     } else {
-      const cyclesPerSeason = Math.floor(DAYS_IN_SEASON / crop.daysToMature);
+      const cyclesPerSeason = Math.floor(daysInSeason / crop.daysToMature);
       return {
         harvests: cyclesPerSeason,
         cost: cyclesPerSeason * crop.seedCost * numPlots,
@@ -252,6 +252,15 @@ const CropRotationOptimizer = () => {
                     className="w-full p-2 border rounded mt-1"
                     value={availablePlots}
                     onChange={(e) => setAvailablePlots(parseInt(e.target.value))}
+                  />
+                </label>
+                <label className="flex-1">
+                  Days Left in Season:
+                  <input
+                    type="number"
+                    className="w-full p-2 border rounded mt-1"
+                    value={daysInSeason}
+                    onChange={(e) => setDaysInSeason(parseInt(e.target.value))}
                   />
                 </label>
               </div>
