@@ -1,50 +1,110 @@
-# React + TypeScript + Vite
+# 🌾 Crop Rotation Optimizer for Fields of Mistria
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React-based web application for optimizing crop rotations in [Fields of Mistria](https://store.steampowered.com/app/2142790/Fields_of_Mistria/). This tool helps maximize profits by suggesting optimal crop combinations based on available resources, seasonal constraints, and crop characteristics.
 
-Currently, two official plugins are available:
+## ✨ Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 💰 Resource Management
+- Configure starting budget
+- Set number of available plots
+- Specify days remaining in the current season
 
-## Expanding the ESLint configuration
+### 🌱 Crop Management
+- Add and manage both single-harvest and renewable crops
+- Support for trees and regular crops
+- Seasonal availability tracking
+- Import/Export crop configurations
+- Bulk import via TSV paste functionality
+- Enable/Disable crops without deletion
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+### 📊 Optimization Features
+- Automatic calculation of optimal crop rotation
+- Per-plot profitability analysis
+- Season-specific recommendations
+- ROI calculations
+- Multiple harvest calculations for renewable crops
 
-- Configure the top-level `parserOptions` property like this:
+### 🎨 User Interface
+- Responsive grid layout
+- Seasonal filtering
+- Clear data visualization
+- Interactive season selection
+- Detailed crop statistics
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## 📖 Usage
+
+### 🆕 Adding New Crops
+1. Fill in the crop details in the "Add New Crop" form:
+   - Name
+   - Type (Single Use/Renewable)
+   - Tree status
+   - Seed cost
+   - Profit per harvest
+   - Days to mature
+   - Days to reflower (for renewable crops)
+   - Select applicable seasons
+
+2. Click "Add Crop" to save the crop to your inventory
+
+### 📥 Bulk Import
+You can paste TSV (Tab-Separated Values) data directly into the name field. The format should be:
+```
+Name    SeedCost    DaysToMature    DaysToReflower    ProfitPerHarvest
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+### ⚙️ Managing Crops
+- Use the "Clear All" button to remove all crops
+- Export your crop configurations to JSON
+- Import previously saved crop configurations
+- Enable/Disable individual crops
+- Delete specific crops
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+### 📋 Viewing Recommendations
+1. Set your resources (budget, plots, days)
+2. Select a season
+3. View the recommended crop rotation in the results table
+4. Check the detailed breakdown of costs, profits, and ROI
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+## 🔧 Technical Details
+
+### 🧮 Optimization Algorithm
+The tool uses an iterative improvement algorithm that:
+1. Makes an initial allocation based on per-plot profitability
+2. Iteratively tries removing and reallocating crops
+3. Considers both startup costs and recurring profits
+4. Respects budget and plot constraints
+5. But does **not** account for multi-season/year rollover (i.e. trees)
+
+### 💾 State Management
+- Uses React's useState for state management
+- Persists crop data in localStorage
+- Maintains separate states for:
+  - Resource configuration
+  - Crop inventory
+  - Current season
+  - New crop form
+
+### 🎯 UI Components
+Built using:
+- shadcn/ui components
+- Lucide React icons
+- Tailwind CSS for styling
+
+## 📦 Dependencies
+- React
+- shadcn/ui
+- Lucide React
+- UUID v7
+- Tailwind CSS
+
+## 🚀 Installation
+1. Ensure the required dependencies are installed
+2. Import the CropRotationOptimizer component
+3. Add necessary UI component imports from shadcn/ui
+4. Include the component in your React application
+
+## 👥 Contributing
+Feel free to submit issues and enhancement requests!
+
+## ⚖️ License
+This project is open source and available under the MIT License.
